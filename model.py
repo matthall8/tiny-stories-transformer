@@ -3,32 +3,52 @@ import torch
 import torch.nn as nn
 import numpy as np
 import torch.nn.functional as F
+import numpy as np
 
 #%%
 torch.manual_seed(42)
 #%%
-class SingleHeadAtt(nn.Module):
+class MultiHeadAtt(nn.Module):
      def __init__(self, n_embd):
-        super(SingleHeadAtt, self).__init__()
+        super(MultiHeadAtt, self).__init__()
         self.n_embd = n_embd
-        self.key_linear_layer = nn.Linear(n_embd, n_embd)
-        self.query_linear_layer = nn.Linear(n_embd, n_embd)
-        self.value_linear_layer = nn.Linear(n_embd, n_embd)
+        self.head_input = n_embd // 2
+        self.key_01_linear_layer = nn.Linear(self.head_input, self.head_input)
+        self.query_01_linear_layer = nn.Linear(self.head_input, self.head_input)
+        self.value_01_linear_layer = nn.Linear(self.head_input, self.head_input)
+        self.key_02_linear_layer = nn.Linear(self.head_input, self.head_input)
+        self.query_02_linear_layer = nn.Linear(self.head_input, self.head_input)
+        self.value_02_linear_layer = nn.Linear(self.head_input, self.head_input)
+        self.final_linear_layer = nn.Linear(n_embd, n_embd)
 
      def forward(self, input, masked):
-        k = self.key_linear_layer(input)
-        v = self.value_linear_layer(input)
-        q = self.query_linear_layer(input)
-        k_dims = k.shape[2]
-        k_transpose = k.permute(0,2,1)
-        scores = torch.bmm(q, k_transpose)
-        scaled_scores = scores / (k_dims**0.5)
+        input_head_01 = input[:,:,:self.head_input]
+        input_head_02 = input[:,:,self.head_input:]
+        k_01 = self.key_01_linear_layer(input_head_01)
+        v_01 = self.value_01_linear_layer(input_head_01)
+        q_01 = self.query_01_linear_layer(input_head_01)
+        k_02 = self.key_02_linear_layer(input_head_02)
+        v_02 = self.value_02_linear_layer(input_head_02)
+        q_02 = self.query_02_linear_layer(input_head_02)
+        k_dims = k_01.shape[2]
+        k_01_transpose = k_01.permute(0,2,1)
+        k_02_transpose = k_02.permute(0,2,1)
+        scores_01 = torch.bmm(q_01, k_01_transpose)
+        scores_02 = torch.bmm(q_02, k_02_transpose)
+        scaled_scores_01 = scores_01 / (k_dims**0.5)
+        scaled_scores_02 = scores_02 / (k_dims**0.5)
         if masked:
-            masked_scores = self.apply_attention_mask(scaled_scores)
-            softmax_scores = F.softmax(masked_scores, dim=2)
+            masked_scores_01 = self.apply_attention_mask(scaled_scores_01)
+            masked_scores_02 = self.apply_attention_mask(scaled_scores_02)
+            softmax_scores_01 = F.softmax(masked_scores_01, dim=2)
+            softmax_scores_02 = F.softmax(masked_scores_02, dim=2)
         else: 
-            softmax_scores = F.softmax(scaled_scores, dim=2)
-        output = torch.bmm(softmax_scores, v)
+            softmax_scores_01 = F.softmax(scaled_scores_01, dim=2)
+            softmax_scores_02 = F.softmax(scaled_scores_02, dim=2)
+        head_output_01 = torch.bmm(softmax_scores_01, v_01)
+        head_output_02 = torch.bmm(softmax_scores_02, v_02)
+        concatenated = torch.cat([head_output_01, head_output_02], dim=2) 
+        output = self.final_linear_layer(concatenated)
         return output
      
      def apply_attention_mask(self, attention_scores):
@@ -44,7 +64,6 @@ class SingleHeadAtt(nn.Module):
         masked_attention_scores = torch.where(mask.bool(), attention_scores, negative_inf)
     
         return masked_attention_scores
-     
 
 class FeedForward(nn.Module):
     def __init__(self, d_model, d_ff, dropout_rate):
@@ -71,10 +90,10 @@ class MatTransformer(nn.Module):
         self.positional_encodings = self.get_positional_encoding(max_sequence_len, n_embd) 
         self.n_embd = n_embd
         self.ff_size = ff_size
-        self.single_head_attention_layer_01 = SingleHeadAtt(n_embd)
-        self.single_head_attention_layer_02 = SingleHeadAtt(n_embd)
-        self.single_head_attention_layer_03 = SingleHeadAtt(n_embd)
-        self.single_head_attention_layer_04 = SingleHeadAtt(n_embd)
+        self.multi_head_attention_layer_01 = MultiHeadAtt(n_embd)
+        self.multi_head_attention_layer_02 = MultiHeadAtt(n_embd)
+        self.multi_head_attention_layer_03 = MultiHeadAtt(n_embd)
+        self.multi_head_attention_layer_04 = MultiHeadAtt(n_embd)
         self.norm_layer_01 = nn.LayerNorm(n_embd)
         self.norm_layer_02 = nn.LayerNorm(n_embd)
         self.norm_layer_03 = nn.LayerNorm(n_embd)
@@ -88,20 +107,20 @@ class MatTransformer(nn.Module):
         pos_encodings = self.positional_encodings[:x.shape[1],:]
         emb = embeddings + pos_encodings
         # first transformer block with mask single head attention layer
-        single_head_attention_01 = self.single_head_attention_layer_01(emb, masked=True)
-        add_layer_01 = emb + single_head_attention_01
+        multi_head_attention_01 = self.multi_head_attention_layer_01(emb, masked=True)
+        add_layer_01 = emb + multi_head_attention_01
         layer_norm_01 = self.norm_layer_01(add_layer_01)
         # second transformer block
-        single_head_attention_02 = self.single_head_attention_layer_02(layer_norm_01, masked=True)
-        add_layer_02 = layer_norm_01 + single_head_attention_02
+        multi_head_attention_02 = self.multi_head_attention_layer_02(layer_norm_01, masked=True)
+        add_layer_02 = layer_norm_01 + multi_head_attention_02
         layer_norm_02 = self.norm_layer_02(add_layer_02)
         # third transformer block
-        single_head_attention_03 = self.single_head_attention_layer_03(layer_norm_02, masked=True)
-        add_layer_03 = layer_norm_02 + single_head_attention_03
+        multi_head_attention_03 = self.multi_head_attention_layer_03(layer_norm_02, masked=True)
+        add_layer_03 = layer_norm_02 + multi_head_attention_03
         layer_norm_03 = self.norm_layer_03(add_layer_03)
         # fourth transformer block
-        single_head_attention_04 = self.single_head_attention_layer_04(layer_norm_03, masked=True)
-        add_layer_04 = layer_norm_03 + single_head_attention_04
+        multi_head_attention_04 = self.multi_head_attention_layer_04(layer_norm_03, masked=True)
+        add_layer_04 = layer_norm_03 + multi_head_attention_04
         layer_norm_04 = self.norm_layer_04(add_layer_04)
         # feed forward 
         feed_forward = self.feed_forward(layer_norm_04)
