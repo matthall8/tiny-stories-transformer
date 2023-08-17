@@ -20,7 +20,7 @@ full_dataset = StoryDataset()
 #%%
 max_len = full_dataset.getMaxLength()
 vocab_size = full_dataset.getVocabSize()
-version = 1
+version = 4
 
 # hyperparameters 
 batch_size = 32
@@ -29,11 +29,13 @@ epochs = 5
 ff_size = 48
 learning_rate = 0.001
 dropout_rate = 0.3
+n_layer = 4
+n_heads = 4
 
 full_training_set = torch.utils.data.DataLoader(full_dataset, batch_size = batch_size, collate_fn=collate_fn, shuffle=True)
 
 #%%
-m = MatTransformer(max_len, n_embd, vocab_size, ff_size, dropout_rate)
+m = MatTransformer(max_len, n_embd, vocab_size, ff_size, dropout_rate, n_heads, n_layer)
 opt = torch.optim.Adam(m.parameters(), lr=learning_rate)
 total_params = sum(p.numel() for p in m.parameters())
 
