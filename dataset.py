@@ -7,7 +7,7 @@ import numpy as np
 import pyarrow.parquet as pq
 import sentencepiece as spm
 import string
-#%%
+#%% 
 #%%
 torch.manual_seed(42)
 
@@ -78,7 +78,7 @@ class StoryDataset(torch.utils.data.Dataset):
     
     def getMaxLength(self):
         return max(len(story) for story in self.story_list)
-    
+         
     def getVocabSize(self):
         return self.tokenizer.vocab_size
 # %%
