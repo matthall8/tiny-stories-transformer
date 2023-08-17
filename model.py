@@ -9,12 +9,13 @@ import numpy as np
 torch.manual_seed(42)
 #%%
 class Head(nn.Module):
-    def __init__(self, n_embds, n_heads, masked, dropout_rate):
+    def __init__(self, n_embds, n_heads, masked, dropout_rate, device):
         super(Head, self).__init__()
         self.n_embds = n_embds
         self.n_heads = n_heads
         self.masked = masked
         self.dropout_rate = dropout_rate
+        self.device = device
         head_size = n_embds // n_heads
         self.key_linear_layer = nn.Linear(n_embds, head_size, bias=False)
         self.query_linear_layer = nn.Linear(n_embds, head_size, bias=False)
@@ -42,10 +43,10 @@ class Head(nn.Module):
         # Generate a mask for the lower triangular part of each matrix in the batch
         batch_size = attention_scores.size(0)
         size = attention_scores.size(1)
-        mask = torch.tril(torch.ones(batch_size, size, size), diagonal=0)
+        mask = torch.tril(torch.ones(batch_size, size, size), diagonal=0).to(self.device)
     
         # Create a tensor of -inf values with the same shape as attention_scores
-        negative_inf = torch.full_like(attention_scores, float('-inf'))
+        negative_inf = torch.full_like(attention_scores, float('-inf')).to(self.device)
     
         # Use torch.where to fill masked positions with -inf
         masked_attention_scores = torch.where(mask.bool(), attention_scores, negative_inf)
@@ -53,13 +54,14 @@ class Head(nn.Module):
         return masked_attention_scores
      
 class MultiHeadAttention(nn.Module):
-    def __init__(self, n_embds, n_heads, masked, dropout_rate):
+    def __init__(self, n_embds, n_heads, masked, dropout_rate,device):
         super(MultiHeadAttention, self).__init__()
         self.n_embds = n_embds
         self.n_heads = n_heads
         self.masked = masked
         self.dropout_rate = dropout_rate
-        self.heads = nn.ModuleList([Head(n_embds, n_heads, masked, dropout_rate) for _ in range (n_heads)])
+        self.device = device
+        self.heads = nn.ModuleList([Head(n_embds, n_heads, masked, dropout_rate,device) for _ in range (n_heads)])
         self.proj = nn.Linear(n_embds, n_embds)
         self.dropout = nn.Dropout(dropout_rate)
 
@@ -69,14 +71,15 @@ class MultiHeadAttention(nn.Module):
         return out
 
 class TransformerBlock(nn.Module):
-    def __init__(self, n_embds, n_heads,dropout_rate,ff_size):
+    def __init__(self, n_embds, n_heads,dropout_rate,ff_size, device):
         # n_embds: embedding dimension, n_heads: the number of heads we'd like
         super(TransformerBlock, self).__init__()
         self.n_embds = n_embds
         self.n_heads = n_heads
         self.dropout_rate = dropout_rate
         self.ff_size = ff_size
-        self.sa = MultiHeadAttention(n_embds, n_heads, masked=True, dropout_rate=dropout_rate)
+        self.device = device
+        self.sa = MultiHeadAttention(n_embds, n_heads, True, dropout_rate, device)
         self.ffwd = FeedForward(n_embds,ff_size,dropout_rate)
         self.ln1 = nn.LayerNorm(n_embds)
         self.ln2 = nn.LayerNorm(n_embds)
@@ -87,22 +90,23 @@ class TransformerBlock(nn.Module):
         return x
 
 class MatTransformer(nn.Module):
-    def __init__(self,max_sequence_len, n_embds, vocab_size, ff_size, dropout_rate, n_heads, n_layers):
+    def __init__(self,max_sequence_len, n_embds, vocab_size, ff_size, dropout_rate, n_heads, n_layers, device):
         super(MatTransformer, self).__init__()
         self.n_embds = n_embds
         self.dropout_rate = dropout_rate
         self.ff_size = ff_size
         self.n_heads = n_heads
+        self.device = device
         self.embeddings = nn.Embedding(vocab_size,n_embds)
         self.positional_encodings = self.get_positional_encoding(max_sequence_len, n_embds) 
-        self.blocks = nn.Sequential(*[TransformerBlock(n_embds, n_heads,dropout_rate,ff_size) for _ in range(n_layers)])
+        self.blocks = nn.Sequential(*[TransformerBlock(n_embds, n_heads,dropout_rate,ff_size,device) for _ in range(n_layers)])
         self.layer_norm_final = nn.LayerNorm(n_embds)
         self.output_linear_layer = nn.Linear(n_embds, vocab_size)
     
     def forward(self, x):
         # embeddings and pos encodings
-        embeddings = self.embeddings(x)
-        pos_encodings = self.positional_encodings[:x.shape[1],:]
+        embeddings = self.embeddings(x).to(self.device)
+        pos_encodings = self.positional_encodings[:x.shape[1],:].to(self.device)
         emb = embeddings + pos_encodings
         transformer_block_output = self.blocks(emb)
         final_layer_norm =  self.layer_norm_final(transformer_block_output)

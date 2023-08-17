@@ -25,7 +25,7 @@ def preprocess_text(text):
 df["processed_text"] = df["text"].apply(preprocess_text)
 
 #convert data frame to list
-text_list = df['processed_text'][:888].tolist()
+text_list = df['processed_text'][:88888].tolist()
 
 #create a text file using the list
 corpus = "\n".join(text_list)
@@ -81,4 +81,4 @@ class StoryDataset(torch.utils.data.Dataset):
          
     def getVocabSize(self):
         return self.tokenizer.vocab_size
-# %%
+#%%
