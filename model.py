@@ -17,9 +17,12 @@ class Head(nn.Module):
         self.dropout_rate = dropout_rate
         self.device = device
         head_size = n_embds // n_heads
-        self.key_linear_layer = nn.Linear(n_embds, head_size, bias=False)
-        self.query_linear_layer = nn.Linear(n_embds, head_size, bias=False)
-        self.value_linear_layer = nn.Linear(n_embds, head_size, bias=False)
+        self.key_linear_layer = bnb.nn.Linear8bitLt(n_embds, head_size, bias=False)
+        self.query_linear_layer = bnb.nn.Linear8bitLt(n_embds, head_size, bias=False)
+        self.value_linear_layer = bnb.nn.Linear8bitLt(n_embds, head_size, bias=False)
+        # self.key_linear_layer = nn.Linear(n_embds, head_size, bias=False)
+        # self.query_linear_layer = nn.Linear(n_embds, head_size, bias=False)
+        # self.value_linear_layer = nn.Linear(n_embds, head_size, bias=False)
         self.dropout = nn.Dropout(self.dropout_rate)
 
     def forward(self, input):
@@ -97,7 +100,7 @@ class MatTransformer(nn.Module):
         self.ff_size = ff_size
         self.n_heads = n_heads
         self.device = device
-        self.embeddings = nn.Embedding(vocab_size,n_embds)
+        self.embeddings = bnb.nn.Embedding(vocab_size, n_embds) #nn.Embedding(vocab_size,n_embds)
         self.positional_encodings = self.get_positional_encoding(max_sequence_len, n_embds) 
         self.blocks = nn.Sequential(*[TransformerBlock(n_embds, n_heads,dropout_rate,ff_size,device) for _ in range(n_layers)])
         self.layer_norm_final = nn.LayerNorm(n_embds)

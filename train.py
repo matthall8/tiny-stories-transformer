@@ -38,7 +38,8 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 #%%
 m = MatTransformer(max_len, n_embd, vocab_size, ff_size, dropout_rate, n_heads, n_layer, device=device)
 m = m.to(device)
-opt = torch.optim.Adam(m.parameters(), lr=learning_rate)
+# opt = torch.optim.Adam(m.parameters(), lr=learning_rate)
+opt = bnb.optim.Adam8bit(m.parameters(), lr=learning_rate)
 total_params = sum(p.numel() for p in m.parameters())
 
 # wandb tracking
